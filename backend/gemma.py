@@ -9,7 +9,9 @@ from urllib.request import Request, urlopen
 
 MODELS = {"gemma-4-26b-a4b-it", "gemma-4-31b-it"}
 BASE = "https://generativelanguage.googleapis.com/v1beta"
+_verified_config = None
 TASKS = {
+    "chat": ("You are the FreshRoute AI marketplace assistant. Respond naturally to the user's message. Use supplied marketplace records for produce, buyers, demand and logistics questions. Clearly distinguish demo records. Do not invent availability, prices, participants, routes or transactions. Greet greetings briefly and offer relevant help. Use conversation as context. Keep answers concise.", ("message",)),
     "description": ("Write a concise produce listing using only supplied facts.", ("produce",)),
     "forecast": ("Explain the supplied demand forecast, its assumptions and uncertainty. Do not invent predictions.", ("forecast",)),
     "matching": ("Recommend farmer-to-buyer matches using supplied supply and requirements. Cite record IDs and explain constraints. Do not invent participants.", ("listings", "requirements")),
@@ -34,13 +36,15 @@ def status():
     key, model, base = settings()
     valid = model in MODELS and base == BASE
     configured = bool(key) and valid
-    return {"status": "NOT_VERIFIED" if configured else "NOT_CONFIGURED",
+    verified = configured and _verified_config == (key, model, base)
+    return {"status": "CONNECTED" if verified else "NOT_VERIFIED" if configured else "NOT_CONFIGURED",
             "model": model, "supports_images": model in MODELS,
-            "message": "Configured; a successful request is required to verify access." if configured
+            "message": "Last hosted request succeeded." if verified else "Configured; a successful request is required to verify access." if configured
             else "Set GEMMA_API_KEY and a documented Gemma 4 model on the backend."}
 
 
 def generate(task, data, image_base64=None, image_mime=None):
+    global _verified_config
     key, model, base = settings()
     if status()["status"] == "NOT_CONFIGURED":
         raise AIError("Gemma NOT CONFIGURED: set backend GEMMA_API_KEY, GEMMA_MODEL and GEMMA_BASE_URL.")
@@ -78,6 +82,7 @@ def generate(task, data, image_base64=None, image_mime=None):
         answer = "\n".join(part["text"] for part in texts if part.get("text") and not part.get("thought"))
         if not answer.strip():
             raise AIError("Gemma returned no usable text (possibly blocked).", 502)
+        _verified_config = (key, model, base)
         return {"text": answer, "model": model, "status": "CONNECTED"}
     except HTTPError as error:
         raise AIError(f"Gemma provider returned HTTP {error.code}. Check model access, key and quota.", 503) from None

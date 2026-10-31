@@ -1,0 +1,13 @@
+.env
+.env.*
+.env.example
+.venv
+frontend/node_modules
+backend/test_*.py
+docs
+vibe_images
+.pytest_cache
+__pycache__
+*.py[cod]
+*.db
+*.db-*

@@ -54,6 +54,12 @@ npm.cmd run dev
 
 Open http://127.0.0.1:5173. API documentation: http://127.0.0.1:8000/docs. Press Ctrl+C in each terminal to stop its server. Virtual environment activation is unnecessary.
 
+## Vercel deployment
+
+The repository is configured for a single Vercel deployment: FastAPI serves the API and Vite's built React frontend. Sign in to Vercel CLI, then run `vercel --prod` from the repository root. Add `GEMMA_API_KEY` in Vercel Project Settings > Environment Variables (Production) to enable hosted AI; keep it backend-only. The app uses same-origin API requests in production.
+
+The hosted demo uses a SQLite database under `/tmp`. Vercel function storage is temporary and instance-local, so marketplace edits can disappear on a cold start or differ between instances. Use a managed database before relying on persistent listings or orders. Local development continues to use `backend/data/freshroute.db`.
+
 ## Verify
 
 Backend tests (provider responses are mocked in unit tests, not live evidence):

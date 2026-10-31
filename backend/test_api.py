@@ -9,6 +9,16 @@ from backend import main
 
 
 class APITests(unittest.TestCase):
+    def test_chat_loads_server_records_and_validates_message(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(main, "database_path", Path(folder) / "chat.db"):
+            with TestClient(main.app) as client, patch.object(main.gemma, "generate", return_value={"text": "Test response", "model": "gemma-4-26b-a4b-it"}) as generate:
+                response = client.post("/api/ai/assist", json={"task": "chat", "data": {"message": "hi", "marketplace": {"products": []}}})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(generate.call_args.args[0], "chat")
+                self.assertEqual(len(generate.call_args.args[1]["marketplace"]["products"]), 12)
+                self.assertEqual(generate.call_args.args[1]["message"], "hi")
+                self.assertEqual(client.post("/api/ai/assist", json={"task": "chat", "data": {"message": " "}}).status_code, 422)
+
     def test_health_and_ai_failure_independence(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(main, "database_path", Path(folder) / "test.db"), patch.dict(os.environ, {"GEMMA_API_KEY": ""}):
             with TestClient(main.app) as client:
