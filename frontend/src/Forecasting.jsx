@@ -17,6 +17,8 @@ export default function Forecasting({ data, loading, reload }) {
   const products = data?.products || []
   const requirements = data?.requirements || []
   const summary = data?.summary || {}
+  const forecast = summary.forecast
+  const models = forecast?.methods || {}
   const snapshot = forecastSnapshot(data?.history)
   const supplyRows = useMemo(() => supplyByCategory(products), [products])
   const demandRows = useMemo(() => demandByProduce(requirements), [requirements])
@@ -56,7 +58,7 @@ export default function Forecasting({ data, loading, reload }) {
       <div className="stats-grid">
         <StatCard icon={Package} tone="green" label="Listed Supply" value={`${fmt(summary.available_kg)} kg`} sub="Current listing quantities" />
         <StatCard icon={Users} tone="orange" label="Open Demand" value={`${fmt(summary.open_demand_kg)} kg`} sub={`${requirements.length} buyer requirements`} />
-        <StatCard icon={TrendingUp} tone="purple" label="Next-day Baseline" value={snapshot.mean == null ? 'No history' : `${fmt(snapshot.mean)} kg`} sub={snapshot.mean == null ? 'Historical data required' : `Mean of ${snapshot.recent.length} recorded days`} />
+        <StatCard icon={TrendingUp} tone="purple" label="Selected Forecast" value={forecast ? `${fmt(forecast.forecast_kg)} kg` : 'No evaluation'} sub={forecast ? forecast.selected_method.replace('_', ' ') : 'Historical data required'} />
         <StatCard icon={BarChart3} tone="blue" label="Recorded Orders" value={(data?.orders || []).length} sub="Local reservations, no payment" />
       </div>
 
@@ -68,6 +70,15 @@ export default function Forecasting({ data, loading, reload }) {
           <p className="inline-note">Generated explanation only. Review before acting.</p>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHead icon={BarChart3} title="Baseline comparison" subtitle="Expanding-window evaluation on synthetic demo history" />
+        <div className="card-body">
+          {forecast ? <><div className="stats-grid">{Object.entries(models).map(([name, model]) => <StatCard key={name} icon={TrendingUp} tone={name === forecast.selected_method ? 'green' : 'blue'} label={name.replace('_', ' ')} value={`${fmt(model.forecast_kg)} kg`} sub={`MAE ${model.mae_kg == null ? 'not evaluated' : `${fmt(model.mae_kg)} kg`} · ${model.test_points} test points${name === forecast.selected_method ? ' · lower MAE' : ''}`} />)}</div>
+            <div className="chart-box"><ResponsiveContainer width="100%" height="100%"><BarChart data={Object.entries(models).map(([method, model]) => ({ method: method.replace('_', ' '), mae: model.mae_kg, forecast: model.forecast_kg }))}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="method" /><YAxis /><Tooltip /><Bar dataKey="mae" name="MAE (kg)" fill="#3aa655" /><Bar dataKey="forecast" name="Forecast (kg)" fill="#f0a24a" /></BarChart></ResponsiveContainer></div>
+            <p className="chart-note">The selected baseline has the lower demo-history MAE. This small synthetic evaluation does not establish real-world accuracy.</p></> : <div className="chart-empty">At least three historical observations are required.</div>}
+        </div>
+      </Card>
 
       <Card>
         <CardHead icon={TrendingUp} title="Recorded demand trend" subtitle="Seeded demo history with the arithmetic-mean baseline" />
@@ -131,7 +142,7 @@ export default function Forecasting({ data, loading, reload }) {
         </Card>
       </div>
 
-      <Disclaimer>Demand history is seeded demonstration data. The baseline is an arithmetic mean, not a trained forecasting model or a validated business forecast.</Disclaimer>
+      <Disclaimer>Demand history is reproducible synthetic demonstration data with relative dates. MAE is measured only on that demo series; neither baseline is a trained model or validated business forecast.</Disclaimer>
     </div>
   )
 }

@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import {
   Bell, Blocks, ChevronDown, LayoutDashboard, Leaf, LineChart, Link2, Map,
   MapPin, Menu, Search, ShoppingBag, ShoppingCart, Sparkles, Sprout, Store, X,
 } from 'lucide-react'
-import Dashboard from './Dashboard.jsx'
-import FarmerPortal from './FarmerPortal.jsx'
-import Marketplace from './Marketplace.jsx'
-import Forecasting from './Forecasting.jsx'
-import Matching from './Matching.jsx'
-import Logistics from './Logistics.jsx'
-import AiAssistant from './AiAssistant.jsx'
-import Integrations from './Integrations.jsx'
+const Dashboard = lazy(() => import('./Dashboard.jsx'))
+const FarmerPortal = lazy(() => import('./FarmerPortal.jsx'))
+const Marketplace = lazy(() => import('./Marketplace.jsx'))
+const Forecasting = lazy(() => import('./Forecasting.jsx'))
+const Matching = lazy(() => import('./Matching.jsx'))
+const Logistics = lazy(() => import('./Logistics.jsx'))
+const AiAssistant = lazy(() => import('./AiAssistant.jsx'))
+const Integrations = lazy(() => import('./Integrations.jsx'))
 import { ToastStack } from './components/ui.jsx'
 import { API, aiStatusMeta, assistantPayload } from './lib/data.js'
 
@@ -219,7 +219,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="page">
+        <main className="page"><Suspense fallback={<div className="page-loading">Loading view…</div>}>
           {view === 'overview' && <Dashboard {...shared} />}
           {view === 'farmer' && <FarmerPortal {...shared} />}
           {view === 'marketplace' && <Marketplace {...shared} initialQuery={marketplaceQuery} />}
@@ -228,7 +228,7 @@ export default function App() {
           {view === 'logistics' && <Logistics {...shared} />}
           {view === 'assistant' && <AiAssistant {...shared} seed={assistantSeed} />}
           {view === 'integrations' && <Integrations {...shared} aiMeta={aiMeta} />}
-        </main>
+        </Suspense></main>
       </div>
 
       <ToastStack toasts={toasts} dismiss={dismissToast} />

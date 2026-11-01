@@ -58,7 +58,9 @@ Open http://127.0.0.1:5173. API documentation: http://127.0.0.1:8000/docs. Press
 
 The repository is configured for a single Vercel deployment: FastAPI serves the API and Vite's built React frontend. Sign in to Vercel CLI, then run `vercel --prod` from the repository root. Add `GEMMA_API_KEY` in Vercel Project Settings > Environment Variables (Production) to enable hosted AI; keep it backend-only. The app uses same-origin API requests in production.
 
-The hosted demo uses a SQLite database under `/tmp`. Vercel function storage is temporary and instance-local, so marketplace edits can disappear on a cold start or differ between instances. Use a managed database before relying on persistent listings or orders. Local development continues to use `backend/data/freshroute.db`.
+SQLite requires a persistent filesystem. In production set `APP_ENV=production` and an explicit `DATABASE_PATH` on a persistent mounted volume; startup rejects temporary-directory storage. Vercel Functions do not provide a persistent SQLite volume, so this backend must not claim durable marketplace edits there. Use a persistent host/volume (or migrate the persistence layer to a managed database) before relying on listings or orders. Local development continues to use `backend/data/freshroute.db`.
+
+For PostgreSQL, set a backend-only `DATABASE_URL=postgresql://...`. PostgreSQL takes precedence over `DATABASE_PATH`, and Alembic upgrades run at application startup. Keep credentials out of `VITE_` variables and source control. To verify PostgreSQL reservation concurrency against a dedicated disposable test database, set `TEST_DATABASE_URL` and run the backend suite; the live test is skipped otherwise.
 
 ## Verify
 
@@ -102,7 +104,14 @@ GEMMA_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 
 Google documents this exact model in [Run Gemma with the Gemini API](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api). Documentation confirms an available model identifier; access for your key, quota, and a successful live response require runtime verification. Never substitute Gemini or another Gemma generation silently. Without a valid key the application must remain usable and AI must report **NOT CONFIGURED**. Do not put the API key in any `VITE_` variable or commit `.env`.
 
-Other variables: `VITE_API_BASE_URL=http://127.0.0.1:8000`, `CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`, and `DATABASE_PATH=backend/data/freshroute.db`.
+Other variables: `VITE_API_BASE_URL=http://127.0.0.1:8000`, `CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`, `DATABASE_PATH=backend/data/freshroute.db`, `APP_ENV=development`, and `SQLITE_BUSY_TIMEOUT_MS=10000`.
+
+Apply migrations manually when needed:
+
+```powershell
+$env:DATABASE_URL='postgresql://user:password@host/database'
+.\.venv\Scripts\alembic.exe upgrade head
+```
 
 Use `npm.cmd ci` with `frontend/package-lock.json` for repeat installs. SQLite files, environments, dependencies, and build output are ignored by Git. See [actual verification results](docs/TEST_RESULTS.md) for completed checks and remaining verification limits.
 

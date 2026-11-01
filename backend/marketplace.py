@@ -1,11 +1,15 @@
 """SQLite marketplace with explicitly labeled demo seed records."""
 from contextlib import closing
 from datetime import date, timedelta
-import sqlite3
+import math
+import os
+import re
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+from backend.forecasting import evaluate
+from backend.database import connect, is_postgres
 
 router = APIRouter(prefix="/api")
 
@@ -33,6 +37,8 @@ class RequirementInput(BaseModel):
     quantity: float = Field(gt=0, le=1000000)
     max_price: float = Field(gt=0, le=1000000)
     location: str = Field(default="Karachi", min_length=2, max_length=80)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
 
 
 class OrderInput(BaseModel):
@@ -42,16 +48,12 @@ class OrderInput(BaseModel):
     buyer: str = Field(min_length=2, max_length=80)
 
 
-def connect(path):
-    connection = sqlite3.connect(path, timeout=10)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
-
-
 def initialize(path):
     with closing(connect(path)) as db, db:
-        db.executescript('''
+        postgres = is_postgres(path)
+        if not postgres:
+            db.execute("PRAGMA journal_mode = WAL")
+            db.executescript('''
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL,
                 farmer TEXT NOT NULL, location TEXT NOT NULL, price REAL NOT NULL,
@@ -78,7 +80,21 @@ def initialize(path):
             );
             CREATE TABLE IF NOT EXISTS marketplace_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         ''')
-        if db.execute("SELECT 1 FROM marketplace_meta WHERE key='seed_v1'").fetchone():
+            requirement_columns = {row[1] for row in db.execute("PRAGMA table_info(requirements)")}
+            for column in ("lat", "lng"):
+                if column not in requirement_columns:
+                    db.execute(f"ALTER TABLE requirements ADD COLUMN {column} REAL")
+            db.execute("PRAGMA user_version = 2")
+        seeded = db.execute("SELECT 1 FROM marketplace_meta WHERE key='seed_v1'").fetchone()
+        if seeded:
+            demo_rows = db.execute("SELECT date FROM demand_history WHERE demo=1 ORDER BY date").fetchall()
+            if demo_rows:
+                recent_rows = demo_rows[-7:]
+                for index, row in enumerate(recent_rows):
+                    db.execute("UPDATE demand_history SET date=? WHERE date=?", (f"tmp-{index}", row["date"]))
+                for index, _ in enumerate(recent_rows):
+                    day = (date.today() - timedelta(days=6-index)).isoformat()
+                    db.execute("UPDATE demand_history SET date=? WHERE date=?", (day, f"tmp-{index}"))
             return
         seeds = [
             ("Vine tomatoes", "Vegetables", "Ahmed Family Farm", "Malir, Karachi", 140, 480, 4, "tomatoes", 24.943, 67.208),
@@ -102,7 +118,9 @@ def initialize(path):
             db.execute("INSERT INTO requirements (buyer,produce,quantity,max_price,location,demo) VALUES (?,?,?,?,?,1)", row)
         for index, (demand, supply) in enumerate([(420, 580), (510, 620), (460, 560), (640, 710), (590, 650), (720, 810), (680, 760)]):
             day = (date.today() - timedelta(days=6-index)).isoformat()
-            db.execute("INSERT OR IGNORE INTO demand_history(date,demand,supply) VALUES (?,?,?)", (day, demand, supply))
+            clause = "ON CONFLICT (date) DO NOTHING" if postgres else ""
+            verb = "INSERT" if postgres else "INSERT OR IGNORE"
+            db.execute(f"{verb} INTO demand_history(date,demand,supply) VALUES (?,?,?) {clause}", (day, demand, supply))
         db.execute("INSERT INTO marketplace_meta VALUES ('seed_v1', 'complete')")
 
 
@@ -117,14 +135,16 @@ def marketplace(request: Request):
         requirements = records(db, "requirements")
         orders = records(db, "orders")
         history = records(db, "demand_history")
-    average = round(sum(row["demand"] for row in history[-7:]) / max(1, len(history[-7:])), 1)
+    forecast = evaluate(history[-7:]) if len(history) >= 3 else None
+    average = forecast["forecast_kg"] if forecast else None
     return {"products": products, "requirements": requirements, "orders": orders, "history": history,
             "summary": {"available_kg": round(sum(p["quantity"] for p in products), 1),
                         "active_listings": sum(p["quantity"] > 0 for p in products),
                         "farmers": len({p["farmer"] for p in products}),
                         "open_demand_kg": sum(r["quantity"] for r in requirements),
                         "order_value": round(sum(o["total"] for o in orders), 2),
-                        "forecast_kg": average, "forecast_method": "7-day arithmetic mean of demo demand history; illustrative baseline, not a trained model.",
+                        "forecast_kg": average, "forecast": forecast,
+                        "forecast_method": "Evaluated moving-average and exponential-smoothing demo baselines; not a trained model.",
                         "demo": True}}
 
 
@@ -138,8 +158,10 @@ def products(request: Request):
 def create_product(value: ProductInput, request: Request):
     fields = value.model_dump()
     with closing(connect(request.app.state.database_path)) as db, db:
-        cursor = db.execute(f"INSERT INTO products ({','.join(fields)}) VALUES ({','.join('?' for _ in fields)})", list(fields.values()))
-        return dict(db.execute("SELECT * FROM products WHERE id=?", (cursor.lastrowid,)).fetchone())
+        returning = " RETURNING id" if is_postgres(request.app.state.database_path) else ""
+        cursor = db.execute(f"INSERT INTO products ({','.join(fields)}) VALUES ({','.join('?' for _ in fields)}){returning}", list(fields.values()))
+        identifier = cursor.fetchone()["id"] if returning else cursor.lastrowid
+        return dict(db.execute("SELECT * FROM products WHERE id=?", (identifier,)).fetchone())
 
 
 @router.get("/requirements")
@@ -152,8 +174,10 @@ def requirements(request: Request):
 def create_requirement(value: RequirementInput, request: Request):
     fields = value.model_dump()
     with closing(connect(request.app.state.database_path)) as db, db:
-        cursor = db.execute(f"INSERT INTO requirements ({','.join(fields)}) VALUES ({','.join('?' for _ in fields)})", list(fields.values()))
-        return dict(db.execute("SELECT * FROM requirements WHERE id=?", (cursor.lastrowid,)).fetchone())
+        returning = " RETURNING id" if is_postgres(request.app.state.database_path) else ""
+        cursor = db.execute(f"INSERT INTO requirements ({','.join(fields)}) VALUES ({','.join('?' for _ in fields)}){returning}", list(fields.values()))
+        identifier = cursor.fetchone()["id"] if returning else cursor.lastrowid
+        return dict(db.execute("SELECT * FROM requirements WHERE id=?", (identifier,)).fetchone())
 
 
 @router.get("/orders")
@@ -165,16 +189,54 @@ def orders(request: Request):
 @router.post("/orders", status_code=201)
 def create_order(value: OrderInput, request: Request):
     with closing(connect(request.app.state.database_path)) as db, db:
-        db.execute("BEGIN IMMEDIATE")
+        if not is_postgres(request.app.state.database_path):
+            db.execute("BEGIN IMMEDIATE")
         product = db.execute("SELECT * FROM products WHERE id=?", (value.product_id,)).fetchone()
         if product is None:
             raise HTTPException(404, "Product not found.")
         changed = db.execute("UPDATE products SET quantity=quantity-? WHERE id=? AND quantity>=?", (value.quantity, value.product_id, value.quantity)).rowcount
         if not changed:
             raise HTTPException(409, "Not enough stock. Refresh the listing and reduce the quantity.")
-        cursor = db.execute("INSERT INTO orders (product_id,product_name,farmer,buyer,quantity,price,total,demo) VALUES (?,?,?,?,?,?,?,?)",
+        returning = " RETURNING id" if is_postgres(request.app.state.database_path) else ""
+        cursor = db.execute("INSERT INTO orders (product_id,product_name,farmer,buyer,quantity,price,total,demo) VALUES (?,?,?,?,?,?,?,?)" + returning,
                             (product["id"], product["name"], product["farmer"], value.buyer, value.quantity, product["price"], round(value.quantity*product["price"], 2), product["demo"]))
-        return dict(db.execute("SELECT * FROM orders WHERE id=?", (cursor.lastrowid,)).fetchone())
+        identifier = cursor.fetchone()["id"] if returning else cursor.lastrowid
+        return dict(db.execute("SELECT * FROM orders WHERE id=?", (identifier,)).fetchone())
+
+
+def haversine_km(lat1, lng1, lat2, lng2):
+    radius = 6371.0
+    lat1, lng1, lat2, lng2 = map(math.radians, (lat1, lng1, lat2, lng2))
+    delta_lat, delta_lng = lat2 - lat1, lng2 - lng1
+    value = math.sin(delta_lat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lng / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
+
+
+def location_relevance(product, requirement):
+    if requirement.get("lat") is not None and requirement.get("lng") is not None:
+        distance = haversine_km(product["lat"], product["lng"], requirement["lat"], requirement["lng"])
+        # Smoothly decreases from 100; 50 km scores 50 and distant suppliers remain eligible.
+        return round(100 / (1 + distance / 50), 1), round(distance, 1), "coordinates"
+    tokens = lambda value: set(re.findall(r"[a-z0-9]+", value.casefold()))
+    product_tokens, requirement_tokens = tokens(product["location"]), tokens(requirement["location"])
+    overlap = product_tokens & requirement_tokens
+    score = 100.0 if overlap else 0.0
+    return score, None, "location_text"
+
+
+PRODUCE_ALIASES = {
+    "tomato": {"tomato", "tomatoes", "tamato", "tamatar"}, "potato": {"potato", "potatoes", "aloo"},
+    "onion": {"onion", "onions", "pyaz"}, "mango": {"mango", "mangoes", "aam"},
+    "capsicum": {"capsicum", "pepper", "peppers", "bellpepper"}, "coriander": {"coriander", "cilantro", "dhaniya"},
+}
+
+
+def normalize_produce(value):
+    compact = re.sub(r"[^a-z0-9]", "", value.casefold())
+    for canonical, aliases in PRODUCE_ALIASES.items():
+        if compact in aliases:
+            return canonical
+    return compact[:-2] if compact.endswith("es") else compact[:-1] if compact.endswith("s") else compact
 
 
 @router.get("/matches")
@@ -184,12 +246,20 @@ def matches(request: Request):
     results = []
     for requirement in requirements:
         for product in products:
-            if requirement["produce"].casefold() not in product["name"].casefold() or product["price"] > requirement["max_price"] or product["quantity"] <= 0:
+            product_terms = {normalize_produce(term) for term in re.findall(r"[a-z0-9]+", product["name"].casefold())}
+            if normalize_produce(requirement["produce"]) not in product_terms or product["price"] > requirement["max_price"] or product["quantity"] <= 0:
                 continue
             quantity = min(product["quantity"], requirement["quantity"])
+            fulfillment_score = round(quantity / requirement["quantity"] * 100)
+            location_score, distance_km, location_method = location_relevance(product, requirement)
+            price_score = round(max(0, 100 * (requirement["max_price"] - product["price"]) / requirement["max_price"]), 1)
+            freshness_score = round(max(0, 100 * (1 - min(product["freshness_days"], 30) / 30)), 1)
+            ranking_score = round(fulfillment_score * .45 + location_score * .25 + price_score * .2 + freshness_score * .1, 1)
             results.append({"product": product, "requirement": requirement, "quantity": quantity,
-                            "score": round(quantity / requirement["quantity"] * 100),
+                            "score": fulfillment_score, "ranking_score": ranking_score,
+                            "location_score": location_score, "distance_km": distance_km,
+                            "price_score": price_score, "freshness_score": freshness_score,
                             "savings": round((requirement["max_price"]-product["price"])*quantity, 2),
-                            "reason": "Produce name matches, price is within budget; score is available quantity as a percentage of requested quantity.",
-                            "method": "Deterministic stock and price matching; not AI", "demo": bool(product["demo"] or requirement["demo"])})
-    return sorted(results, key=lambda item: (-item["score"], item["product"]["price"]))
+                            "reason": "Produce and budget match. score is fulfillment percentage; ranking_score also considers location proximity.",
+                            "method": f"Deterministic stock, price and {location_method} matching; not AI", "demo": bool(product["demo"] or requirement["demo"])})
+    return sorted(results, key=lambda item: (-item["ranking_score"], -item["score"], item["product"]["price"], item["product"]["id"]))

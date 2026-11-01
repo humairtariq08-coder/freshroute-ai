@@ -11,9 +11,10 @@ function FitBounds({ points }) {
   return null
 }
 
-export default function RoutesMap({ products, routes, selectedId, onSelect, height = 280 }) {
+export default function RoutesMap({ products = [], routes = {}, selectedId, onSelect, plan, stops = [], height = 280 }) {
   const points = products.map((product) => [Number(product.lat), Number(product.lng)])
-  const bounds = [...points, [HUB.lat, HUB.lng]]
+  const planPoints = plan?.geometry?.map((point) => [point.lat, point.lng]) || []
+  const bounds = planPoints.length ? planPoints : [...points, ...stops.map((stop) => [Number(stop.lat), Number(stop.lng)]), [HUB.lat, HUB.lng]]
 
   return (
     <MapContainer
@@ -29,6 +30,8 @@ export default function RoutesMap({ products, routes, selectedId, onSelect, heig
       />
       <ZoomControl position="bottomright" />
       <FitBounds points={bounds} />
+
+      {planPoints.length ? <Polyline positions={planPoints} pathOptions={{ color: plan.source === 'osrm' ? '#15803d' : '#f59e0b', weight: 5, opacity: .9, dashArray: plan.source === 'osrm' ? undefined : '8 8' }} /> : null}
 
       {products.map((product) => {
         const route = routes[product.id]
@@ -67,6 +70,12 @@ export default function RoutesMap({ products, routes, selectedId, onSelect, heig
             {product.location}<br />
             {fmt(product.quantity)} kg available
           </Popup>
+        </CircleMarker>
+      ))}
+
+      {stops.map((stop, index) => (
+        <CircleMarker key={`stop-${index}`} center={[Number(stop.lat), Number(stop.lng)]} radius={9} pathOptions={{ color: '#1d4ed8', fillColor: '#60a5fa', fillOpacity: 1, weight: 2 }}>
+          <Popup><strong>Stop {index + 1}: {stop.label}</strong></Popup>
         </CircleMarker>
       ))}
 

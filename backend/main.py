@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Literal
 from backend import gemma, marketplace, routing
+from backend.database import connect, is_postgres, run_migrations
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
@@ -25,13 +26,33 @@ if not database_path.is_absolute():
     database_path = ROOT / database_path
 
 
+def configured_database():
+    return os.getenv("DATABASE_URL", "").strip() or database_path
+
+
+def validate_database_configuration(path: Path):
+    default_environment = "production" if os.getenv("VERCEL") == "1" else "development"
+    environment = (os.getenv("APP_ENV") or default_environment).strip().casefold()
+    if environment not in {"production", "prod"}:
+        return
+    if not os.getenv("DATABASE_PATH", "").strip() and not os.getenv("DATABASE_URL", "").strip():
+        raise RuntimeError("DATABASE_PATH must be explicitly configured in production.")
+    temporary_root = Path(gettempdir()).resolve()
+    resolved = path.resolve()
+    if temporary_root == resolved or temporary_root in resolved.parents:
+        raise RuntimeError("Production DATABASE_PATH cannot use temporary storage; configure a persistent mounted volume.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    database_path.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(database_path)) as connection:
-        connection.execute("PRAGMA user_version = 1")
-    app.state.database_path = database_path
-    marketplace.initialize(database_path)
+    target = configured_database()
+    if is_postgres(target):
+        run_migrations(target)
+    else:
+        validate_database_configuration(target)
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+    app.state.database_path = target
+    marketplace.initialize(target)
     yield
 
 
@@ -51,9 +72,9 @@ app.add_middleware(
 @app.get("/api/health")
 def health():
     try:
-        with closing(sqlite3.connect(database_path)) as connection:
+        with closing(connect(configured_database())) as connection:
             connection.execute("SELECT 1").fetchone()
-    except sqlite3.Error as error:
+    except Exception as error:
         raise HTTPException(status_code=503, detail="Database unavailable") from error
     return {"status": "ok", "application": "FreshRoute AI", "database": "ok"}
 

@@ -9,6 +9,17 @@ from backend import main
 
 
 class APITests(unittest.TestCase):
+    def test_production_database_rejects_implicit_or_temporary_storage(self):
+        with patch.dict(os.environ, {"APP_ENV": "production", "DATABASE_PATH": ""}):
+            with self.assertRaisesRegex(RuntimeError, "explicitly configured"):
+                main.validate_database_configuration(Path(tempfile.gettempdir()) / "freshroute.db")
+        with patch.dict(os.environ, {"VERCEL": "1", "APP_ENV": "", "DATABASE_PATH": ""}):
+            with self.assertRaisesRegex(RuntimeError, "explicitly configured"):
+                main.validate_database_configuration(Path(tempfile.gettempdir()) / "freshroute.db")
+        with patch.dict(os.environ, {"APP_ENV": "production", "DATABASE_PATH": str(Path(tempfile.gettempdir()) / "freshroute.db")}):
+            with self.assertRaisesRegex(RuntimeError, "temporary storage"):
+                main.validate_database_configuration(Path(tempfile.gettempdir()) / "freshroute.db")
+
     def test_chat_loads_server_records_and_validates_message(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(main, "database_path", Path(folder) / "chat.db"):
             with TestClient(main.app) as client, patch.object(main.gemma, "generate", return_value={"text": "Test response", "model": "gemma-4-26b-a4b-it"}) as generate:

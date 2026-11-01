@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Clock, Map, MapPin, RefreshCw, Route, Sparkles, Truck } from 'lucide-react'
 import RoutesMap from './components/RoutesMap.jsx'
 import {
   Alert, Badge, Card, CardHead, Disclaimer, EmptyState, PageHeader, Spinner, StatCard,
 } from './components/ui.jsx'
-import { HUB, askGemma, assistantPayload, fmt, locatedProducts } from './lib/data.js'
+import { API, HUB, askGemma, assistantPayload, fmt, locatedProducts } from './lib/data.js'
 import { useRoadRoutes } from './lib/routes.js'
 
 export default function Logistics({ data }) {
@@ -14,6 +14,11 @@ export default function Logistics({ data }) {
   const [error, setError] = useState('')
   const products = data?.products || []
   const requirements = data?.requirements || []
+  const locatedBuyers = useMemo(() => requirements.filter((item) => item.lat != null && item.lng != null), [requirements])
+  const [selectedBuyerIds, setSelectedBuyerIds] = useState([])
+  const [plan, setPlan] = useState(null)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError, setPlanError] = useState('')
   const located = locatedProducts(products)
   const { routes, loading, targets } = useRoadRoutes(products, 8)
   const selected = targets.find((product) => product.id === selectedId) || targets[0]
@@ -21,6 +26,22 @@ export default function Logistics({ data }) {
   const totalKm = routeList.reduce((sum, item) => sum + Number(item.route?.distance_km || 0), 0)
   const totalMinutes = routeList.reduce((sum, item) => sum + Number(item.route?.duration_min || 0), 0)
   const roadCount = routeList.filter((item) => item.route?.source === 'osrm').length
+
+  useEffect(() => { setSelectedBuyerIds(locatedBuyers.slice(0, 4).map((item) => item.id)) }, [locatedBuyers])
+  const selectedBuyers = locatedBuyers.filter((item) => selectedBuyerIds.includes(item.id))
+
+  async function planDelivery() {
+    if (!selectedBuyers.length) return
+    setPlanLoading(true); setPlanError(''); setPlan(null)
+    try {
+      const stops = [{ lat: HUB.lat, lng: HUB.lng, label: HUB.label }, ...selectedBuyers.map((item) => ({ lat: Number(item.lat), lng: Number(item.lng), label: item.buyer }))]
+      const response = await fetch(`${API}/api/route/plan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stops }) })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : `HTTP ${response.status}`)
+      setPlan(payload)
+    } catch (caught) { setPlanError(`Could not calculate the multi-stop route: ${caught.message}`) }
+    finally { setPlanLoading(false) }
+  }
 
   async function explain() {
     setBusy(true)
@@ -67,12 +88,27 @@ export default function Logistics({ data }) {
       </div>
 
       {error ? <Alert>{error}</Alert> : null}
+      {planError ? <Alert>{planError}</Alert> : null}
       {answer ? (
         <Card className="answer-card">
           <div className="answer-head"><Sparkles size={16} className="icon-green" />Gemma logistics review <Badge tone="gray">{answer.model}</Badge></div>
           <div className="answer-text">{answer.text}</div>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHead icon={Route} title="Multi-stop buyer delivery" subtitle="Select buyers with coordinates and optimize their visit order" actions={<button className="btn btn-primary btn-sm" type="button" disabled={!selectedBuyers.length || planLoading} onClick={planDelivery}>{planLoading ? 'Optimizing…' : 'Plan selected stops'}</button>} />
+        <div className="card-body">
+          {locatedBuyers.length ? <div className="filter-row">{locatedBuyers.map((buyer) => <label className="filter-chip" key={buyer.id}><input type="checkbox" checked={selectedBuyerIds.includes(buyer.id)} onChange={() => setSelectedBuyerIds((current) => current.includes(buyer.id) ? current.filter((id) => id !== buyer.id) : [...current, buyer.id])} /> {buyer.buyer} · {buyer.location}</label>)}</div> : <EmptyState icon={MapPin} title="No buyer coordinates">Add latitude and longitude to a buyer requirement to plan delivery stops.</EmptyState>}
+          {planLoading ? <Spinner label="Optimizing buyer stop order…" /> : null}
+          {plan ? <>
+            <div className="stats-grid"><StatCard icon={Truck} tone="green" label="Total distance" value={`${fmt(plan.distance_km)} km`} sub={plan.source === 'osrm' ? 'OSRM road route' : 'Straight-line fallback'} /><StatCard icon={Clock} tone="purple" label="Estimated duration" value={plan.duration_min == null ? 'Unavailable' : `${plan.duration_min} min`} sub="No live traffic" /></div>
+            <div className="logistics-map"><RoutesMap plan={plan} stops={plan.stop_order?.slice(1) || []} height={430} /></div>
+            <ol>{(plan.stop_order || []).map((stop, index) => <li key={`${stop.input_index}-${index}`}><strong>{index === 0 ? 'Start' : `Stop ${index}`}</strong>: {stop.label}</li>)}</ol>
+            <Badge tone={plan.source === 'osrm' ? 'green' : 'orange'}>{plan.source === 'osrm' ? 'OSRM road geometry' : 'Straight-line fallback'}</Badge> <span className="muted-small">{plan.note}</span>
+          </> : null}
+        </div>
+      </Card>
 
       <Card>
         <CardHead

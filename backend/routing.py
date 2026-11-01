@@ -11,12 +11,23 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api")
 
 OSRM_BASE = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org").rstrip("/")
 CACHE_TTL_SECONDS = 3600
 _cache = {}
+
+
+class Stop(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    label: str = Field(default="", max_length=100)
+
+
+class RoutePlan(BaseModel):
+    stops: list[Stop] = Field(min_length=2, max_length=20)
 
 
 def haversine_km(lat1, lng1, lat2, lng2):
@@ -62,6 +73,34 @@ def _fetch_osrm(origin_lat, origin_lng, dest_lat, dest_lng):
         "geometry": [{"lat": lat, "lng": lng} for lng, lat in coordinates],
         "note": "Road route from the public OSRM demo server; not a commercial routing guarantee.",
     }
+
+
+def _fetch_osrm_trip(stops):
+    coordinates = ";".join(f"{stop.lng},{stop.lat}" for stop in stops)
+    request = Request(f"{OSRM_BASE}/trip/v1/driving/{coordinates}?roundtrip=false&source=first&destination=last&overview=full&geometries=geojson", headers={"User-Agent": "FreshRouteAI/0.2", "Accept": "application/json"})
+    with urlopen(request, timeout=8) as response:
+        payload = json.load(response)
+    trip = (payload.get("trips") or [None])[0]
+    waypoints = payload.get("waypoints") or []
+    if not trip or len(waypoints) != len(stops):
+        raise ValueError("OSRM returned no trip")
+    ordered = sorted(range(len(stops)), key=lambda index: waypoints[index]["waypoint_index"])
+    return {"source": "osrm", "distance_km": round(trip["distance"] / 1000, 1), "duration_min": round(trip["duration"] / 60),
+            "stop_order": [{"input_index": index, "label": stops[index].label, "lat": stops[index].lat, "lng": stops[index].lng} for index in ordered],
+            "geometry": [{"lat": lat, "lng": lng} for lng, lat in trip["geometry"]["coordinates"]],
+            "note": "Road trip and stop order from OSRM; no live traffic."}
+
+
+@router.post("/route/plan")
+def route_plan(plan: RoutePlan):
+    try:
+        return _fetch_osrm_trip(plan.stops)
+    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, TypeError, IndexError):
+        distance = sum(haversine_km(a.lat, a.lng, b.lat, b.lng) for a, b in zip(plan.stops, plan.stops[1:]))
+        return {"source": "fallback", "distance_km": round(distance, 1), "duration_min": None,
+                "stop_order": [{"input_index": index, **stop.model_dump()} for index, stop in enumerate(plan.stops)],
+                "geometry": [{"lat": stop.lat, "lng": stop.lng} for stop in plan.stops],
+                "note": "OSRM unavailable; input-order straight-line segments shown."}
 
 
 @router.get("/route")

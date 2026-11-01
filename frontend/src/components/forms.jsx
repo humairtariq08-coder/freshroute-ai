@@ -10,7 +10,7 @@ const PRODUCT_INITIAL = {
 }
 
 const REQUIREMENT_INITIAL = {
-  buyer: '', produce: '', quantity: '', max_price: '', location: 'Karachi',
+  buyer: '', produce: '', quantity: '', max_price: '', location: 'Karachi', lat: '', lng: '',
 }
 
 export function ProductFormModal({ onClose, onSaved }) {
@@ -111,6 +111,8 @@ export function RequirementFormModal({ onClose, onSaved }) {
           ...form,
           quantity: parseFloat(form.quantity),
           max_price: parseFloat(form.max_price),
+          lat: form.lat === '' ? null : Number(form.lat),
+          lng: form.lng === '' ? null : Number(form.lng),
         }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -136,6 +138,10 @@ export function RequirementFormModal({ onClose, onSaved }) {
           <Field label="Quantity (kg)"><input className="input" type="number" min={0.1} step={0.1} required placeholder="200" {...bind('quantity')} /></Field>
           <Field label="Max price (PKR/kg)"><input className="input" type="number" min={1} step={0.01} required placeholder="160" {...bind('max_price')} /></Field>
           <Field label="Location"><input className="input" required minLength={2} maxLength={80} placeholder="City" {...bind('location')} /></Field>
+        </div>
+        <div className="form-row two">
+          <Field label="Latitude (optional)"><input className="input" type="number" step="any" min="-90" max="90" placeholder="24.8607" {...bind('lat')} /></Field>
+          <Field label="Longitude (optional)"><input className="input" type="number" step="any" min="-180" max="180" placeholder="67.0011" {...bind('lng')} /></Field>
         </div>
         <div className="form-actions">
           <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>

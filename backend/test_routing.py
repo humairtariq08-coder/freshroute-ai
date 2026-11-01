@@ -44,6 +44,14 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(len(result["geometry"]), 2)
         self.assertGreater(result["distance_km"], 0)
 
+    def test_multistop_failure_returns_ordered_fallback(self):
+        plan = routing.RoutePlan(stops=[routing.Stop(lat=24.86, lng=67.01, label="Hub"), routing.Stop(lat=25.03, lng=67.13, label="Buyer 1"), routing.Stop(lat=25.39, lng=68.37, label="Buyer 2")])
+        with mock.patch.object(routing, "urlopen", side_effect=URLError("offline")):
+            result = routing.route_plan(plan)
+        self.assertEqual(result["source"], "fallback")
+        self.assertEqual([stop["label"] for stop in result["stop_order"]], ["Hub", "Buyer 1", "Buyer 2"])
+        self.assertIsNone(result["duration_min"])
+
 
 if __name__ == "__main__":
     unittest.main()
