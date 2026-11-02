@@ -103,7 +103,7 @@ export default function Logistics({ data }) {
           {planLoading ? <Spinner label="Optimizing buyer stop order…" /> : null}
           {plan ? <>
             <div className="stats-grid"><StatCard icon={Truck} tone="green" label="Total distance" value={`${fmt(plan.distance_km)} km`} sub={plan.source === 'osrm' ? 'OSRM road route' : 'Straight-line fallback'} /><StatCard icon={Clock} tone="purple" label="Estimated duration" value={plan.duration_min == null ? 'Unavailable' : `${plan.duration_min} min`} sub="No live traffic" /></div>
-            <div className="logistics-map"><RoutesMap plan={plan} stops={plan.stop_order?.slice(1) || []} height={430} /></div>
+            <div className="logistics-map" role="img" aria-label={`${plan.source === 'osrm' ? 'Road route' : 'Straight-line fallback'} through ${(plan.stop_order || []).length} stops, ${fmt(plan.distance_km)} kilometres${plan.duration_min == null ? '' : `, estimated ${plan.duration_min} minutes`}.`}><RoutesMap plan={plan} stops={plan.stop_order?.slice(1) || []} height={430} /></div>
             <ol>{(plan.stop_order || []).map((stop, index) => <li key={`${stop.input_index}-${index}`}><strong>{index === 0 ? 'Start' : `Stop ${index}`}</strong>: {stop.label}</li>)}</ol>
             <Badge tone={plan.source === 'osrm' ? 'green' : 'orange'}>{plan.source === 'osrm' ? 'OSRM road geometry' : 'Straight-line fallback'}</Badge> <span className="muted-small">{plan.note}</span>
           </> : null}
@@ -141,7 +141,7 @@ export default function Logistics({ data }) {
 
       <Card>
         <CardHead icon={Route} title="Pickup planning" subtitle="Road distance is supplied by OSRM; fallback rows use straight-line distance" />
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} aria-label="Pickup planning table. Scroll horizontally to view all route columns.">
           <table className="data-table">
             <thead><tr>{['Farm / produce', 'Origin', 'Available', 'Road distance', 'Drive time', 'Source', ''].map((heading) => <th key={heading}>{heading}</th>)}</tr></thead>
             <tbody>

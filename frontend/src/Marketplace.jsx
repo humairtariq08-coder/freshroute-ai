@@ -73,7 +73,7 @@ function ProductCard({ product, onOrder }) {
   )
 }
 
-export default function Marketplace({ data, loading, reload, notify, initialQuery = '' }) {
+export default function Marketplace({ data, loading, reload, notify, navigate, initialQuery = '' }) {
   const [tab, setTab] = useState('products')
   const [search, setSearch] = useState(initialQuery)
   const [category, setCategory] = useState('All')
@@ -137,6 +137,9 @@ export default function Marketplace({ data, loading, reload, notify, initialQuer
           <>
             <button type="button" className="btn btn-outline" onClick={reload} disabled={loading}>
               <RefreshCw size={14} className={loading ? 'spinner' : ''} /> Refresh
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => navigate('matching')}>
+              <Users size={14} /> Find Best Matches
             </button>
             <button type="button" className="btn btn-primary" onClick={() => setShowRequirement(true)}>
               <Plus size={14} /> Post Requirement

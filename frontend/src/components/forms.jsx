@@ -67,9 +67,9 @@ export function ProductFormModal({ onClose, onSaved }) {
           <Field label="Location"><input className="input" required minLength={2} maxLength={80} placeholder="City / district" {...bind('location')} /></Field>
         </div>
         <div className="form-row three">
-          <Field label="Price (PKR/kg)"><input className="input" type="number" min={1} step={0.01} required placeholder="140" {...bind('price')} /></Field>
-          <Field label="Quantity (kg)"><input className="input" type="number" min={0.1} step={0.1} required placeholder="500" {...bind('quantity')} /></Field>
-          <Field label="Shelf life (days)"><input className="input" type="number" min={1} max={365} required {...bind('freshness_days')} /></Field>
+          <Field label="Price (PKR per kg)" hint="Example: 140 means Rs. 140 for each kilogram."><input className="input" type="number" min={1} step={0.01} required placeholder="140" {...bind('price')} /></Field>
+          <Field label="Available quantity (kg)" hint="Enter only stock you can reserve now."><input className="input" type="number" min={0.1} step={0.1} required placeholder="500" {...bind('quantity')} /></Field>
+          <Field label="Shelf life (days)" hint="Whole days remaining after pickup."><input className="input" type="number" min={1} max={365} required {...bind('freshness_days')} /></Field>
         </div>
         <Field label="Description (optional)" hint="Stored as-is and shown on the listing.">
           <textarea className="input" rows={3} maxLength={2000} placeholder="Brief description of the produce…" {...bind('description')} />

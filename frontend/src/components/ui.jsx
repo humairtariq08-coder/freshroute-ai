@@ -1,4 +1,5 @@
 import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react'
+import { useEffect, useId, useRef } from 'react'
 
 export function Card({ children, className = '', ...rest }) {
   return <section className={`card ${className}`.trim()} {...rest}>{children}</section>
@@ -86,12 +87,33 @@ export function ToastStack({ toasts, dismiss }) {
 }
 
 export function Modal({ title, icon: Icon, onClose, children }) {
+  const closeButton = useRef(null)
+  const origin = useRef(null)
+  const onCloseRef = useRef(onClose)
+  const titleId = useId()
+  onCloseRef.current = onClose
+  useEffect(() => {
+    origin.current = document.activeElement
+    closeButton.current?.focus()
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') { onCloseRef.current(); return }
+      if (event.key !== 'Tab') return
+      const focusable = [...document.querySelectorAll('.modal-card button:not(:disabled), .modal-card input:not(:disabled), .modal-card select:not(:disabled), .modal-card textarea:not(:disabled), .modal-card [href]')]
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => { window.removeEventListener('keydown', handleKeyDown); origin.current?.focus?.() }
+  }, [])
   return (
     <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal-head">
-          <h2>{Icon ? <Icon size={19} className="icon-green" /> : null}{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><X size={16} /></button>
+          <h2 id={titleId}>{Icon ? <Icon size={19} className="icon-green" /> : null}{title}</h2>
+          <button ref={closeButton} type="button" className="icon-btn" onClick={onClose} aria-label={`Close ${title}`}><X size={16} /></button>
         </div>
         {children}
       </div>
@@ -104,7 +126,7 @@ export function Field({ label, hint, children }) {
     <label className="field">
       <span>{label}</span>
       {children}
-      {hint ? <small>{hint}</small> : null}
+      {hint ? <small className="field-hint">{hint}</small> : null}
     </label>
   )
 }

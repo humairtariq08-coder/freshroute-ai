@@ -88,7 +88,7 @@ export default function Forecasting({ data, loading, reload }) {
             <span><i className="dot orange" />7-day mean</span>
           </div>
           {trend.length ? (
-            <div className="chart-box tall">
+            <div className="chart-box tall" role="img" aria-label={`Demand chart showing ${trend.length} demo days. Selected forecast is ${forecast ? `${fmt(forecast.forecast_kg)} kilograms using ${forecast.selected_method.replace('_', ' ')}` : 'not available'}.`}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trend} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2ea" />
@@ -102,6 +102,7 @@ export default function Forecasting({ data, loading, reload }) {
             </div>
           ) : <div className="chart-empty">No demand history recorded yet.</div>}
           <p className="chart-note">{snapshot.method}</p>
+          <p className="sr-only">Historical demand ranges from {fmt(Math.min(...trend.map((row) => row.demand)))} to {fmt(Math.max(...trend.map((row) => row.demand)))} kilograms across the displayed demo days.</p>
         </div>
       </Card>
 

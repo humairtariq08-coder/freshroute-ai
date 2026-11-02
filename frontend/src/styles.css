@@ -1,6 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Accessibility and interaction baseline for all existing views. */
+:focus-visible { outline: 3px solid #1b7f4b; outline-offset: 3px; }
+.skip-link { position: fixed; z-index: 1000; left: 12px; top: -60px; background: #063f27; color: #fff; padding: 10px 14px; border-radius: 6px; font-weight: 700; }
+.skip-link:focus { top: 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.field-hint { color: #547060; line-height: 1.4; }
+.nav-item { min-height: 44px; }
+.btn, .icon-btn, .filter-chip { min-height: 40px; }
+.input { min-height: 42px; }
+.page:focus { outline: none; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+
 :root {
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Space Grotesk', system-ui, sans-serif;

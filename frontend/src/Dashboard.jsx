@@ -109,6 +109,7 @@ export default function Dashboard({ data, loading, error, aiStatus, reload, navi
 
   return (
     <div className="overview-layout">
+      <h1 className="sr-only">Dashboard</h1>
       <div className="main-col">
         {loading && !data ? <div className="data-strip">Loading live marketplace data…</div> : null}
         {error ? (
@@ -125,6 +126,9 @@ export default function Dashboard({ data, loading, error, aiStatus, reload, navi
             <p>Predict demand, match supply, and deliver fresh produce to reduce food waste and build stronger communities.</p>
             <button type="button" className="hero-cta" onClick={() => navigate('farmer')}>
               List Your Produce <ArrowRight size={15} />
+            </button>
+            <button type="button" className="btn btn-soft" onClick={() => navigate('matching')}>
+              <Link2 size={15} /> Find Best Matches
             </button>
           </div>
           <div className="hero-benefits">

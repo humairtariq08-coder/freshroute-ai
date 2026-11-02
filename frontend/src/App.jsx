@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import {
-  Bell, Blocks, ChevronDown, LayoutDashboard, Leaf, LineChart, Link2, Map,
+  Bell, ChevronDown, LayoutDashboard, Leaf, LineChart, Map,
   MapPin, Menu, Search, ShoppingBag, ShoppingCart, Sparkles, Sprout, Store, X,
 } from 'lucide-react'
 const Dashboard = lazy(() => import('./Dashboard.jsx'))
@@ -10,19 +10,16 @@ const Forecasting = lazy(() => import('./Forecasting.jsx'))
 const Matching = lazy(() => import('./Matching.jsx'))
 const Logistics = lazy(() => import('./Logistics.jsx'))
 const AiAssistant = lazy(() => import('./AiAssistant.jsx'))
-const Integrations = lazy(() => import('./Integrations.jsx'))
 import { ToastStack } from './components/ui.jsx'
 import { API, aiStatusMeta, assistantPayload } from './lib/data.js'
 
 const NAV = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'farmer', label: 'Farmer Portal', icon: Sprout },
-  { id: 'marketplace', label: 'Buyer Marketplace', icon: Store },
-  { id: 'forecasting', label: 'Demand Forecasting', icon: LineChart },
-  { id: 'matching', label: 'Smart Matching', icon: Link2 },
-  { id: 'logistics', label: 'Logistics Planner', icon: Map },
+  { id: 'marketplace', label: 'Marketplace', icon: Store },
+  { id: 'forecasting', label: 'Demand Forecast', icon: LineChart },
+  { id: 'logistics', label: 'Delivery Planner', icon: Map },
   { id: 'assistant', label: 'AI Assistant', icon: Sparkles },
-  { id: 'integrations', label: 'Integrations', icon: Blocks },
 ]
 
 export default function App() {
@@ -116,6 +113,8 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
+      <div className="sr-only" role="status" aria-live="polite">{loading ? 'Refreshing marketplace data' : error ? error : 'Marketplace data ready'}</div>
       {mobileNav ? <button type="button" className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} /> : null}
 
       <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
@@ -134,6 +133,7 @@ export default function App() {
               type="button"
               className={`nav-item ${view === item.id ? 'active' : ''}`}
               onClick={() => navigate(item.id)}
+              aria-current={view === item.id ? 'page' : undefined}
             >
               <item.icon size={17} />
               <span>{item.label}</span>
@@ -219,7 +219,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="page"><Suspense fallback={<div className="page-loading">Loading view…</div>}>
+        <main className="page" id="main-content" tabIndex="-1"><Suspense fallback={<div className="page-loading" role="status">Loading view…</div>}>
           {view === 'overview' && <Dashboard {...shared} />}
           {view === 'farmer' && <FarmerPortal {...shared} />}
           {view === 'marketplace' && <Marketplace {...shared} initialQuery={marketplaceQuery} />}
@@ -227,7 +227,6 @@ export default function App() {
           {view === 'matching' && <Matching {...shared} />}
           {view === 'logistics' && <Logistics {...shared} />}
           {view === 'assistant' && <AiAssistant {...shared} seed={assistantSeed} />}
-          {view === 'integrations' && <Integrations {...shared} aiMeta={aiMeta} />}
         </Suspense></main>
       </div>
 
